@@ -19,6 +19,7 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("tasks_remaining", &Stage::tasks_remaining)
       .def_readwrite("avg_task_duration", &Stage::avg_task_duration)
       .def_readwrite("assigned_executors", &Stage::assigned_executors)
+      .def_readwrite("completed", &Stage::completed)
       .def("is_root", &Stage::is_root)
       .def("is_leaf", &Stage::is_leaf)
       .def("runnable", &Stage::runnable);
@@ -28,18 +29,24 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("stages", &Job::stages)
       .def_readwrite("parallelism_limit", &Job::parallelism_limit)
       .def_readwrite("assigned_executors", &Job::assigned_executors)
-      .def_readwrite("arrival_time", &Job::arrival_time);
+      .def_readwrite("arrival_time", &Job::arrival_time)
+      .def_readwrite("active_stage", &Job::active_stage)
+      .def_readwrite("completed", &Job::completed)
+      .def_readwrite("completion_time", &Job::completion_time);
 
   py::class_<Simulator>(m, "Simulator")
       .def(py::init<Simulator::Config>())
       .def("reset", &Simulator::reset)
+      .def("add_job", &Simulator::add_job)
       .def("num_idle", &Simulator::num_idle)
       .def("jobs", &Simulator::jobs)
       .def("now", &Simulator::now)
       .def("add_executors", &Simulator::add_executors)
+      .def("job_done", &Simulator::job_done)
       .def("run_until_idle", &Simulator::run_until_idle);
 
   py::class_<Simulator::Config>(m, "SimulatorConfig")
       .def(py::init<>())
-      .def_readwrite("num_executors", &Simulator::Config::num_executors);
+      .def_readwrite("num_executors", &Simulator::Config::num_executors)
+      .def_readwrite("seed", &Simulator::Config::seed);
 }

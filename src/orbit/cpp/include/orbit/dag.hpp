@@ -15,6 +15,7 @@ struct Stage {
   int tasks_remaining = 0;
   double avg_task_duration = 1.0;  // seconds, from profiling
   int assigned_executors = 0;      // executors currently working on this stage
+  bool completed = false;          // all tasks done, dependents may fire
 
   bool is_root() const { return parents.empty(); }
   bool is_leaf() const { return children.empty(); }
@@ -28,6 +29,11 @@ struct Job {
   int parallelism_limit = 1;   // l_i
   int assigned_executors = 0;  // current executor count for this job
   double arrival_time = 0.0;
+
+  // runtime scheduling state, owned by the simulator
+  int active_stage = -1;      // stage being worked on, -1 if none
+  bool completed = false;     // every stage finished
+  double completion_time = -1.0;
 };
 
 }  // namespace orbit
