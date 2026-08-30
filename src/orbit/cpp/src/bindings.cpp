@@ -68,6 +68,7 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def(py::init<Simulator::Config>())
       .def("reset", &Simulator::reset)
       .def("add_job", &Simulator::add_job)
+      .def("add_job_at", &Simulator::add_job_at)
       .def("num_idle", &Simulator::num_idle)
       .def("available_for", &Simulator::available_for)
       .def("jobs", &Simulator::jobs)

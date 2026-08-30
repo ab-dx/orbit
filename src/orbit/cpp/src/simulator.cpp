@@ -15,8 +15,14 @@ void Simulator::reset() {
 }
 
 int Simulator::add_job(const Job& job) {
+  const int idx = static_cast<int>(jobs_.size());
   jobs_.push_back(job);
-  const int idx = static_cast<int>(jobs_.size()) - 1;
+  insert_job(job, idx);
+  pump(idx);
+  return idx;
+}
+
+void Simulator::insert_job(const Job& job, int idx) {
   Job& jj = jobs_[static_cast<size_t>(idx)];
   for (auto& st : jj.stages) {
     st.job_index = idx;
@@ -28,7 +34,19 @@ int Simulator::add_job(const Job& job) {
       jj.stages[static_cast<size_t>(p)].children.push_back(static_cast<int>(s));
     }
   }
-  pump(idx);
+}
+
+int Simulator::add_job_at(const Job& job, double time) {
+  // reserve the slot now so the returned index is stable; the job body is
+  // inserted when its arrival event fires, in the same order, so the index
+  // lines up as long as all arrivals are prescheduled (which the env does).
+  const int idx = static_cast<int>(jobs_.size());
+  jobs_.push_back(Job{});
+  events_.schedule_at(time, [this, job, idx]() {
+    jobs_[static_cast<size_t>(idx)] = job;
+    insert_job(job, idx);
+    pump(idx);
+  });
   return idx;
 }
 

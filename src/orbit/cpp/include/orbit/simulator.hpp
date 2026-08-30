@@ -31,6 +31,10 @@ class Simulator {
   // add a job to the cluster; returns its index.
   int add_job(const Job& job);
 
+  // add a job that only enters the cluster at simulated time, queued as an
+  // arrival event. returns its index in the eventual jobs array.
+  int add_job_at(const Job& job, double time);
+
   // number of idle executors currently available.
   int num_idle() const { return pool_.num_idle(); }
 
@@ -72,6 +76,9 @@ class Simulator {
  private:
   // true when every one of the stage's parents has completed.
   bool dependencies_met(const Job& job, int stage_index) const;
+
+  // store a job at a reserved index, fixing up job_index and child edges.
+  void insert_job(const Job& job, int idx);
 
   // after any state change, assign executors to a runnable stage if possible.
   void pump(int job_index);
