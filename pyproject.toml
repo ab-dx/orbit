@@ -1,0 +1,47 @@
+[project]
+name = "orbit"
+version = "0.1.0"
+description = "an rl cluster scheduler: a c++ discrete-event dag simulator with a pytorch/gnn + reinforce training stack."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Abhinav Datta", email = "abhinavdatta1@gmail.com" }
+]
+dependencies = [
+    "numpy>=1.26",
+    "gymnasium>=0.29",
+    "torch>=2.1",
+    "torch-geometric>=2.4",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+serve = [
+    "grpcio>=1.60",
+    "grpcio-tools>=1.60",
+    "protobuf>=4.25",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-benchmark>=4.0",
+]
+
+[project.scripts]
+orbit = "orbit.cli:main"
+
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.version = ">=3.18"
+cmake.source-dir = "src/orbit/cpp"
+build-dir = "build/{wheel_tag}"
+# Rebuilds are triggered by reinstalling after editing C++ sources, rather than
+# implicitly on every import (which is fragile with build isolation).
+editable.rebuild = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

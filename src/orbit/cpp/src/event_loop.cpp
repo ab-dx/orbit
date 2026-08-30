@@ -1,0 +1,21 @@
+#include "orbit/event_loop.hpp"
+
+namespace orbit {
+
+bool EventLoop::run_until(Clock until) {
+  while (!queue_.empty()) {
+    if (queue_.top().time > until) {
+      // not due yet; stop, leaving the rest for the caller
+      now_ = until;
+      return true;
+    }
+    Event ev = std::move(queue_.top());
+    queue_.pop();
+    now_ = ev.time;
+    ev.cb();
+  }
+  now_ = until;
+  return false;
+}
+
+}  // namespace orbit
