@@ -21,9 +21,15 @@ class EventLoop {
     schedule_at(now_ + dt, std::move(cb));
   }
 
+  // true when no events remain scheduled.
+  bool empty() const { return queue_.empty(); }
+
   // run all events with time <= until; returns false if the queue emptied
   // first.
   bool run_until(Clock until);
+
+  // run exactly the next scheduled event; returns false if the queue is empty.
+  bool run_next();
 
  private:
   struct Event {

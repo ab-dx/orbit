@@ -19,6 +19,7 @@ class Simulator {
     uint32_t seed = 1;           // rng seed; used by later phases for noise
     double jvm_startup_delay = 0.0;  // seconds to launch an executor on a job
     double first_wave_slowdown = 1.0;  // multiplier on each stage's first wave
+    double executor_rate = 0.0;   // tasks/sec per executor; 0 = 1/avg_task_duration
   };
 
   explicit Simulator(Config cfg);
@@ -44,8 +45,20 @@ class Simulator {
   // the job is done when every stage has completed.
   bool job_done(int job_index) const;
 
-  // advance the simulation to the next event (currently runs until idle).
+  // advance the simulation by one decision point: process the next scheduled
+  // event (a wave completion or a jvm startup). returns false when the event
+  // queue is empty, i.e. no more work can make progress.
+  bool step();
+
+  // run events until the queue empties (batch mode).
   void run_until_idle();
+
+  // number of jobs that completed during the most recent step.
+  int completed_since_step() const { return step_completed_; }
+
+  // sum of job completion times (jct) of jobs that completed in the most
+  // recent step; reward signal is built from these.
+  double jct_since_step() const { return step_jct_; }
 
  private:
   // true when every one of the stage's parents has completed.
@@ -63,11 +76,16 @@ class Simulator {
   // called when a batch of granted executors finishes its jvm startup delay.
   void on_startup_done(int job_index, int count);
 
+  // effective processing rate (tasks/sec) of a stage given k executors.
+  double stage_rate(const Stage& st, int k) const;
+
   Config cfg_;
   EventLoop events_;
   ExecutorPool pool_;
   std::vector<Job> jobs_;
   std::mt19937 rng_;
+  int step_completed_ = 0;      // completions attributed to the current step
+  double step_jct_ = 0.0;       // sum of their completion times
 };
 
 }  // namespace orbit

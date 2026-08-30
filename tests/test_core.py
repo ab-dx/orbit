@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from math import ceil
+import pytest
 
 from orbit import __version__, core
 
@@ -89,7 +89,10 @@ def test_single_stage_parallel_run() -> None:
 
 
 def test_single_stage_partial_parallelism() -> None:
-    # 10 tasks but only 3 executors -> ceil(10/3) = 4 waves, 2.0s each.
+    # 10 tasks but only 3 executors. rate = 3 * (1/2.0) = 1.5 tasks/sec.
+    # three full waves of 3 (2.0s each) + a final partial wave of 1 task
+    # (1/1.5 = 0.6667s) = 6.6667s. the piecewise rate model speeds up the
+    # trailing partial wave instead of charging a full duration for it.
     st = core.Stage()
     st.total_tasks = 10
     st.tasks_remaining = 10
@@ -104,7 +107,7 @@ def test_single_stage_partial_parallelism() -> None:
     sim.run_until_idle()
 
     assert sim.job_done(idx)
-    assert sim.jobs()[idx].completion_time == ceil(10 / 3) * 2.0
+    assert sim.jobs()[idx].completion_time == pytest.approx(6.0 + 2.0 / 3.0)
 
 
 def test_chain_releases_dependents() -> None:
@@ -329,4 +332,136 @@ def test_executor_migration_between_jobs_with_delay() -> None:
     # B starts at t=2 (after A finished); 1.0s startup + 1.0s run = t=4
     assert sim.jobs()[b].completion_time == 4.0
     assert sim.num_idle() == 4
+
+
+# ---- milestone 1.3 ----
+
+
+def test_high_parallelism_slower_than_linear() -> None:
+    # 100 tasks / 4 exec with avg 1.0 would be 25s at linear speedup. the
+    # stage's mu_cap of 2.0 tasks/sec saturates throughput: rate = min(4,2)=2,
+    # so each full wave of 4 tasks takes 2.0s -> 25 * 2.0 = 50s.
+    st = core.Stage()
+    st.total_tasks = 100
+    st.tasks_remaining = 100
+    st.avg_task_duration = 1.0
+    st.mu_cap = 2.0
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+
+    idx = sim.add_job(_single_stage_job(st, parallelism=4))
+    sim.add_executors(idx, 4)
+    sim.run_until_idle()
+
+    assert sim.job_done(idx)
+    assert sim.jobs()[idx].completion_time == 50.0
+
+
+def test_high_parallelism_saturates_without_cap() -> None:
+    # same workload but no mu_cap: linear speedup holds at 25s.
+    st = core.Stage()
+    st.total_tasks = 100
+    st.tasks_remaining = 100
+    st.avg_task_duration = 1.0
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+
+    idx = sim.add_job(_single_stage_job(st, parallelism=4))
+    sim.add_executors(idx, 4)
+    sim.run_until_idle()
+
+    assert sim.jobs()[idx].completion_time == 25.0
+
+
+def test_step_advances_decision_points() -> None:
+    # 8 tasks / 4 exec -> two waves of 1.0s. each step processes exactly the
+    # next scheduled event: startup, wave1, wave2.
+    st = core.Stage()
+    st.total_tasks = 8
+    st.tasks_remaining = 8
+    st.avg_task_duration = 1.0
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+
+    idx = sim.add_job(_single_stage_job(st, parallelism=4))
+    sim.add_executors(idx, 4)
+
+    # step 1 runs the startup event at t=0 (no-op clock advance)
+    assert sim.step() is True
+    assert sim.now() == 0.0
+    assert sim.completed_since_step() == 0
+
+    # step 2 runs wave1, done at t=1.0
+    assert sim.step() is True
+    assert sim.now() == 1.0
+    assert sim.completed_since_step() == 0
+
+    # step 3 runs wave2, done at t=2.0 -> job completes
+    assert sim.step() is True
+    assert sim.now() == 2.0
+    assert sim.job_done(idx)
+    assert sim.completed_since_step() == 1
+    assert sim.jct_since_step() == 2.0
+
+    # queue empty; stepping again returns false
+    assert sim.step() is False
+
+
+def test_step_runs_until_idle_completes_job() -> None:
+    st = core.Stage()
+    st.total_tasks = 4
+    st.tasks_remaining = 4
+    st.avg_task_duration = 1.0
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+
+    idx = sim.add_job(_single_stage_job(st, parallelism=4))
+    sim.add_executors(idx, 4)
+
+    while sim.step():
+        pass
+
+    assert sim.job_done(idx)
+    assert sim.jobs()[idx].completion_time == 1.0
+
+
+def test_jct_accumulates_per_step() -> None:
+    # two identical single-wave jobs complete in separate steps; each step
+    # reports exactly the jct of the job finishing in that interval.
+    def one(tasks):
+        st = core.Stage()
+        st.total_tasks = tasks
+        st.tasks_remaining = tasks
+        st.avg_task_duration = 1.0
+        return _single_stage_job(st, parallelism=4)
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 8
+    sim = core.Simulator(cfg)
+
+    a = sim.add_job(one(4))
+    b = sim.add_job(one(4))
+    sim.add_executors(a, 4)
+    sim.add_executors(b, 4)
+
+    total_jct = 0.0
+    total_completed = 0
+    while sim.step():
+        assert sim.completed_since_step() in (0, 1)
+        total_jct += sim.jct_since_step()
+        total_completed += sim.completed_since_step()
+
+    assert total_completed == 2
+    # each job finishes at t=1.0 with arrival 0
+    assert total_jct == pytest.approx(2.0)
+    assert sim.job_done(a)
+    assert sim.job_done(b)
 

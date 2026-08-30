@@ -103,8 +103,12 @@ void Simulator::start_wave(int job_index, int stage_index) {
     return;
   }
 
+  // a wave of wave tasks completes at the stage's effective rate; away
+  // from saturation this reduces to wave / (k / avg) = avg per full wave.
+  const int k = st.assigned_executors;
+  double rate = stage_rate(st, k);
+  double duration = wave / rate;
   // the first wave of a stage is slower (jit warmup and task setup)
-  double duration = st.avg_task_duration;
   if (st.wave_count == 0) {
     duration *= cfg_.first_wave_slowdown;
   }
@@ -114,6 +118,14 @@ void Simulator::start_wave(int job_index, int stage_index) {
       duration, [this, job_index, stage_index, wave]() {
         on_wave_done(job_index, stage_index, wave);
       });
+}
+
+double Simulator::stage_rate(const Stage& st, int k) const {
+  const double lambda = cfg_.executor_rate > 0.0
+                            ? cfg_.executor_rate
+                            : 1.0 / st.avg_task_duration;
+  const double linear = lambda * k;
+  return st.mu_cap > 0.0 ? std::min(linear, st.mu_cap) : linear;
 }
 
 void Simulator::on_wave_done(int job_index, int stage_index, int wave_size) {
@@ -147,13 +159,26 @@ void Simulator::on_wave_done(int job_index, int stage_index, int wave_size) {
     job.assigned_executors = 0;
     job.starting_executors = 0;
     job.active_executors = 0;
+    // record the completion for the reward signal of the current step
+    step_completed_ += 1;
+    step_jct_ += job.completion_time - job.arrival_time;
     return;
   }
   pump(job_index);
 }
 
+bool Simulator::step() {
+  // each step covers one decision interval: process events up to and
+  // including the next scheduled event, accumulating jct for completions.
+  step_completed_ = 0;
+  step_jct_ = 0.0;
+  if (events_.empty()) return false;
+  return events_.run_next();
+}
+
 void Simulator::run_until_idle() {
-  events_.run_until(events_.now() + 1e9);
+  while (step()) {
+  }
 }
 
 }  // namespace orbit

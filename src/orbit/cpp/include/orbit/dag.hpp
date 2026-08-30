@@ -13,8 +13,9 @@ struct Stage {
 
   int total_tasks = 0;
   int tasks_remaining = 0;
-  double avg_task_duration = 1.0;  // seconds, from profiling
+  double avg_task_duration = 1.0;  // seconds per task at one executor, from profiling
   int assigned_executors = 0;      // executors currently working on this stage
+  double mu_cap = 0.0;             // max processing rate, tasks/sec; 0 = unlimited
   bool completed = false;          // all tasks done, dependents may fire
   int wave_count = 0;              // waves started; first wave is slowed
 

@@ -19,6 +19,7 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("tasks_remaining", &Stage::tasks_remaining)
       .def_readwrite("avg_task_duration", &Stage::avg_task_duration)
       .def_readwrite("assigned_executors", &Stage::assigned_executors)
+      .def_readwrite("mu_cap", &Stage::mu_cap)
       .def_readwrite("completed", &Stage::completed)
       .def_readwrite("wave_count", &Stage::wave_count)
       .def("is_root", &Stage::is_root)
@@ -46,7 +47,10 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def("now", &Simulator::now)
       .def("add_executors", &Simulator::add_executors)
       .def("job_done", &Simulator::job_done)
-      .def("run_until_idle", &Simulator::run_until_idle);
+      .def("step", &Simulator::step)
+      .def("run_until_idle", &Simulator::run_until_idle)
+      .def("completed_since_step", &Simulator::completed_since_step)
+      .def("jct_since_step", &Simulator::jct_since_step);
 
   py::class_<Simulator::Config>(m, "SimulatorConfig")
       .def(py::init<>())
@@ -55,5 +59,6 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("jvm_startup_delay",
                      &Simulator::Config::jvm_startup_delay)
       .def_readwrite("first_wave_slowdown",
-                     &Simulator::Config::first_wave_slowdown);
+                     &Simulator::Config::first_wave_slowdown)
+      .def_readwrite("executor_rate", &Simulator::Config::executor_rate);
 }

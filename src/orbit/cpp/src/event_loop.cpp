@@ -18,4 +18,13 @@ bool EventLoop::run_until(Clock until) {
   return false;
 }
 
+bool EventLoop::run_next() {
+  if (queue_.empty()) return false;
+  Event ev = std::move(queue_.top());
+  queue_.pop();
+  now_ = ev.time;
+  ev.cb();
+  return true;
+}
+
 }  // namespace orbit
