@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from orbit import __version__, core
+from orbit.sim.observe import edge_index, node_features, runnable_set
 
 
 def _single_stage_job(stage, parallelism):
@@ -464,4 +466,192 @@ def test_jct_accumulates_per_step() -> None:
     assert total_jct == pytest.approx(2.0)
     assert sim.job_done(a)
     assert sim.job_done(b)
+
+
+# ---- milestone 1.4 ----
+
+
+def _stage(tasks, parents=None, dur=1.0, mucap=0.0):
+    st = core.Stage()
+    st.total_tasks = tasks
+    st.tasks_remaining = tasks
+    st.avg_task_duration = dur
+    st.mu_cap = mucap
+    if parents:
+        st.parents = parents
+    return st
+
+
+def _diamond_job(limit=4):
+    s0 = _stage(5, dur=2.0)
+    s1 = _stage(5, dur=3.0)
+    s2 = _stage(8, parents=[0, 1], mucap=2.0)
+    job = core.Job()
+    job.parallelism_limit = limit
+    job.stages = [s0, s1, s2]
+    return job
+
+
+def test_observe_covers_every_node() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    obs = sim.observe()
+    # 3 nodes, one per stage, globally ids 0..2
+    assert len(obs.nodes) == 3
+    assert [n.node_id for n in obs.nodes] == [0, 1, 2]
+
+
+def test_observe_per_node_features() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    obs = sim.observe()
+    s0, s1, s2 = obs.nodes
+    assert (s0.job_index, s0.stage_index) == (0, 0)
+    assert (s1.job_index, s1.stage_index) == (0, 1)
+    assert (s2.job_index, s2.stage_index) == (0, 2)
+
+    assert s0.tasks_remaining == 5
+    assert s0.avg_task_duration == 2.0
+    assert s1.avg_task_duration == 3.0
+    assert s0.assigned_executors == 0
+    assert s2.mu_cap == 2.0
+    assert s0.parallelism_limit == 4
+    # no executors granted yet, so headroom equals the whole limit
+    assert s0.headroom == 4
+    assert s0.wave_count == 0
+    assert s0.completed == 0
+    assert s0.is_root == 1
+    assert s0.is_leaf == 0
+    assert s2.is_leaf == 1
+    assert s0.age == 0.0
+
+
+def test_observe_runnable_set_excludes_blocked_join() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    obs = sim.observe()
+    # roots s0 and s1 are runnable; the join s2 waits for both parents
+    assert obs.runnable == [(0, 0), (0, 1)]
+    assert [n.runnable for n in obs.nodes] == [1, 1, 0]
+
+
+def test_observe_runnable_set_advances_with_execution() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    idx = sim.add_job(_diamond_job())
+    sim.add_executors(idx, 4)
+    sim.run_until_idle()
+
+    obs = sim.observe()
+    assert obs.runnable == []
+    assert [n.completed for n in obs.nodes] == [1, 1, 1]
+    assert sim.job_done(idx)
+
+
+def test_observe_dag_edges_from_parents() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    # s0 -> s2 and s1 -> s2, in stage order
+    obs = sim.observe()
+    assert obs.edge_src == [0, 1]
+    assert obs.edge_dst == [2, 2]
+
+
+def test_observe_global_node_ids_span_jobs() -> None:
+    j0 = core.Job()
+    j0.parallelism_limit = 3
+    j0.stages = [_stage(4), _stage(4, parents=[0])]
+    j1 = core.Job()
+    j1.parallelism_limit = 2
+    j1.stages = [_stage(6)]
+
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(j0)
+    sim.add_job(j1)
+
+    obs = sim.observe()
+    assert [n.node_id for n in obs.nodes] == [0, 1, 2]
+    assert [(n.job_index, n.stage_index) for n in obs.nodes] == [
+        (0, 0),
+        (0, 1),
+        (1, 0),
+    ]
+    assert obs.runnable == [(0, 0), (1, 0)]
+    # the single edge lives inside job0: node 0 -> node 1
+    assert obs.edge_src == [0]
+    assert obs.edge_dst == [1]
+
+
+def test_observe_is_non_mutating() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    first = sim.observe()
+    second = sim.observe()
+    snapped = [
+        (n.tasks_remaining, n.assigned_executors, n.runnable, n.wave_count)
+        for n in first.nodes
+    ]
+    resnap = [
+        (n.tasks_remaining, n.assigned_executors, n.runnable, n.wave_count)
+        for n in second.nodes
+    ]
+    assert snapped == resnap
+    assert sim.num_idle() == 10  # no executors granted by observing
+
+
+def test_node_features_matrix_shape() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    feat = node_features(sim.observe())
+    # one row per stage node, and one column per StageObs feature
+    assert feat.shape == (3, 12)
+    assert feat.dtype == np.float32
+    # row for s2 (the join) has its known non-identity values
+    assert feat[2, 0] == 8.0  # tasks_remaining
+    assert feat[2, 3] == 2.0  # mu_cap
+    assert feat[2, 10] == 0.0  # runnable flag while blocked
+    assert feat[0, 7] == 0.0  # completed
+    assert feat[0, 8] == 1.0  # is_root
+
+
+def test_edge_index_matrix_shape() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    idx = edge_index(sim.observe())
+    assert idx.shape == (2, 2)  # (src, dst) rows, two edges
+    assert idx.dtype == np.int64
+    assert idx.tolist() == [[0, 1], [2, 2]]
+
+
+def test_runnable_set_helper_returns_job_stage_pairs() -> None:
+    cfg = core.SimulatorConfig()
+    cfg.num_executors = 10
+    sim = core.Simulator(cfg)
+    sim.add_job(_diamond_job())
+
+    assert runnable_set(sim.observe()) == [(0, 0), (0, 1)]
 

@@ -3,6 +3,7 @@
 
 #include "orbit/dag.hpp"
 #include "orbit/executor.hpp"
+#include "orbit/observation.hpp"
 #include "orbit/simulator.hpp"
 
 namespace py = pybind11;
@@ -38,6 +39,31 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("completed", &Job::completed)
       .def_readwrite("completion_time", &Job::completion_time);
 
+  py::class_<StageObs>(m, "StageObs")
+      .def(py::init<>())
+      .def_readonly("node_id", &StageObs::node_id)
+      .def_readonly("job_index", &StageObs::job_index)
+      .def_readonly("stage_index", &StageObs::stage_index)
+      .def_readonly("tasks_remaining", &StageObs::tasks_remaining)
+      .def_readonly("avg_task_duration", &StageObs::avg_task_duration)
+      .def_readonly("assigned_executors", &StageObs::assigned_executors)
+      .def_readonly("mu_cap", &StageObs::mu_cap)
+      .def_readonly("parallelism_limit", &StageObs::parallelism_limit)
+      .def_readonly("headroom", &StageObs::headroom)
+      .def_readonly("wave_count", &StageObs::wave_count)
+      .def_readonly("completed", &StageObs::completed)
+      .def_readonly("is_root", &StageObs::is_root)
+      .def_readonly("is_leaf", &StageObs::is_leaf)
+      .def_readonly("runnable", &StageObs::runnable)
+      .def_readonly("age", &StageObs::age);
+
+  py::class_<Observation>(m, "Observation")
+      .def(py::init<>())
+      .def_readonly("nodes", &Observation::nodes)
+      .def_readonly("runnable", &Observation::runnable)
+      .def_readonly("edge_src", &Observation::edge_src)
+      .def_readonly("edge_dst", &Observation::edge_dst);
+
   py::class_<Simulator>(m, "Simulator")
       .def(py::init<Simulator::Config>())
       .def("reset", &Simulator::reset)
@@ -47,6 +73,7 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def("now", &Simulator::now)
       .def("add_executors", &Simulator::add_executors)
       .def("job_done", &Simulator::job_done)
+      .def("observe", &Simulator::observe)
       .def("step", &Simulator::step)
       .def("run_until_idle", &Simulator::run_until_idle)
       .def("completed_since_step", &Simulator::completed_since_step)

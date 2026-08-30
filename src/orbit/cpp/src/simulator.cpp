@@ -17,6 +17,17 @@ void Simulator::reset() {
 int Simulator::add_job(const Job& job) {
   jobs_.push_back(job);
   const int idx = static_cast<int>(jobs_.size()) - 1;
+  Job& jj = jobs_[static_cast<size_t>(idx)];
+  for (auto& st : jj.stages) {
+    st.job_index = idx;
+  }
+  // derive children from parents so edges are always consistent, even if the
+  // caller only filled in parent links.
+  for (size_t s = 0; s < jj.stages.size(); ++s) {
+    for (const int p : jj.stages[s].parents) {
+      jj.stages[static_cast<size_t>(p)].children.push_back(static_cast<int>(s));
+    }
+  }
   pump(idx);
   return idx;
 }
@@ -179,6 +190,54 @@ bool Simulator::step() {
 void Simulator::run_until_idle() {
   while (step()) {
   }
+}
+
+Observation Simulator::observe() const {
+  Observation obs;
+  int job_start = 0;
+
+  // build a per-job, per-stage observation with a global sequential node id
+  // so edges can reference nodes across all jobs in one adjacency list.
+  for (size_t j = 0; j < jobs_.size(); ++j) {
+    const Job& job = jobs_[j];
+    const int headroom = job.parallelism_limit - job.assigned_executors;
+    for (size_t s = 0; s < job.stages.size(); ++s) {
+      const Stage& st = job.stages[s];
+
+      StageObs so{};
+      so.node_id = job_start + static_cast<int>(s);
+      so.job_index = static_cast<int>(j);
+      so.stage_index = static_cast<int>(s);
+      so.tasks_remaining = st.tasks_remaining;
+      so.avg_task_duration = st.avg_task_duration;
+      so.assigned_executors = st.assigned_executors;
+      so.mu_cap = st.mu_cap;
+      so.parallelism_limit = job.parallelism_limit;
+      so.headroom = std::max(0, headroom);
+      so.wave_count = st.wave_count;
+      so.completed = st.completed ? 1 : 0;
+      so.is_root = st.is_root() ? 1 : 0;
+      so.is_leaf = st.is_leaf() ? 1 : 0;
+      so.runnable =
+          (st.tasks_remaining > 0 && !st.completed && dependencies_met(job, s))
+              ? 1
+              : 0;
+      so.age = now() - job.arrival_time;
+      obs.nodes.push_back(so);
+
+      if (so.runnable) {
+        obs.runnable.emplace_back(static_cast<int>(j), static_cast<int>(s));
+      }
+      // child stages live in the same job, so their global node id is the
+      // job's starting node id plus their local stage index.
+      for (const int c : st.children) {
+        obs.edge_src.push_back(so.node_id);
+        obs.edge_dst.push_back(job_start + c);
+      }
+    }
+    job_start += static_cast<int>(job.stages.size());
+  }
+  return obs;
 }
 
 }  // namespace orbit

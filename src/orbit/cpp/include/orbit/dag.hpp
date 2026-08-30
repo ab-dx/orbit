@@ -10,6 +10,7 @@ namespace orbit {
 struct Stage {
   std::vector<int> parents;  // indices into the owning job's stage array
   std::vector<int> children;
+  int job_index = -1;  // index of the owning job, set by the simulator
 
   int total_tasks = 0;
   int tasks_remaining = 0;

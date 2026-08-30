@@ -3,6 +3,7 @@
 #include "orbit/dag.hpp"
 #include "orbit/event_loop.hpp"
 #include "orbit/executor.hpp"
+#include "orbit/observation.hpp"
 
 #include <cstdint>
 #include <random>
@@ -35,6 +36,10 @@ class Simulator {
 
   // jobs currently in the cluster.
   const std::vector<Job>& jobs() const { return jobs_; }
+
+  // snapshot of the cluster at this decision point: per-node features, the
+  // runnable-stage set, and the global dag adjacency. does not mutate state.
+  Observation observe() const;
 
   EventLoop::Clock now() const { return events_.now(); }
 
