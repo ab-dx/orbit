@@ -20,6 +20,7 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("avg_task_duration", &Stage::avg_task_duration)
       .def_readwrite("assigned_executors", &Stage::assigned_executors)
       .def_readwrite("completed", &Stage::completed)
+      .def_readwrite("wave_count", &Stage::wave_count)
       .def("is_root", &Stage::is_root)
       .def("is_leaf", &Stage::is_leaf)
       .def("runnable", &Stage::runnable);
@@ -29,6 +30,8 @@ PYBIND11_MODULE(_orbit_core, m) {
       .def_readwrite("stages", &Job::stages)
       .def_readwrite("parallelism_limit", &Job::parallelism_limit)
       .def_readwrite("assigned_executors", &Job::assigned_executors)
+      .def_readwrite("starting_executors", &Job::starting_executors)
+      .def_readwrite("active_executors", &Job::active_executors)
       .def_readwrite("arrival_time", &Job::arrival_time)
       .def_readwrite("active_stage", &Job::active_stage)
       .def_readwrite("completed", &Job::completed)
@@ -48,5 +51,9 @@ PYBIND11_MODULE(_orbit_core, m) {
   py::class_<Simulator::Config>(m, "SimulatorConfig")
       .def(py::init<>())
       .def_readwrite("num_executors", &Simulator::Config::num_executors)
-      .def_readwrite("seed", &Simulator::Config::seed);
+      .def_readwrite("seed", &Simulator::Config::seed)
+      .def_readwrite("jvm_startup_delay",
+                     &Simulator::Config::jvm_startup_delay)
+      .def_readwrite("first_wave_slowdown",
+                     &Simulator::Config::first_wave_slowdown);
 }

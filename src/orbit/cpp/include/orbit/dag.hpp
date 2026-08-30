@@ -16,6 +16,7 @@ struct Stage {
   double avg_task_duration = 1.0;  // seconds, from profiling
   int assigned_executors = 0;      // executors currently working on this stage
   bool completed = false;          // all tasks done, dependents may fire
+  int wave_count = 0;              // waves started; first wave is slowed
 
   bool is_root() const { return parents.empty(); }
   bool is_leaf() const { return children.empty(); }
@@ -27,7 +28,9 @@ struct Stage {
 struct Job {
   std::vector<Stage> stages;
   int parallelism_limit = 1;   // l_i
-  int assigned_executors = 0;  // current executor count for this job
+  int assigned_executors = 0;  // total executors held (starting + active)
+  int starting_executors = 0;  // granted but in the jvm startup delay
+  int active_executors = 0;    // ready to work
   double arrival_time = 0.0;
 
   // runtime scheduling state, owned by the simulator

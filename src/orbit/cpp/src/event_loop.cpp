@@ -14,7 +14,7 @@ bool EventLoop::run_until(Clock until) {
     now_ = ev.time;
     ev.cb();
   }
-  now_ = until;
+  // queue emptied; now_ already points at the last processed event.
   return false;
 }
 

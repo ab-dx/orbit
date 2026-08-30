@@ -16,7 +16,9 @@ class Simulator {
  public:
   struct Config {
     int num_executors = 50;
-    uint32_t seed = 1;  // rng seed; used by later phases for duration noise
+    uint32_t seed = 1;           // rng seed; used by later phases for noise
+    double jvm_startup_delay = 0.0;  // seconds to launch an executor on a job
+    double first_wave_slowdown = 1.0;  // multiplier on each stage's first wave
   };
 
   explicit Simulator(Config cfg);
@@ -57,6 +59,9 @@ class Simulator {
 
   // called when a wave finishes; advances tasks and fires dependents.
   void on_wave_done(int job_index, int stage_index, int wave_size);
+
+  // called when a batch of granted executors finishes its jvm startup delay.
+  void on_startup_done(int job_index, int count);
 
   Config cfg_;
   EventLoop events_;
