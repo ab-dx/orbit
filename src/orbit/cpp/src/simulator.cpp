@@ -69,6 +69,11 @@ bool Simulator::job_done(int job_index) const {
          jobs_[static_cast<size_t>(job_index)].completed;
 }
 
+int Simulator::available_for(int job_index) const {
+  if (job_index < 0 || job_index >= static_cast<int>(jobs_.size())) return 0;
+  return pool_.available_for(jobs_[static_cast<size_t>(job_index)]);
+}
+
 bool Simulator::dependencies_met(const Job& job, int stage_index) const {
   const auto& st = job.stages[static_cast<size_t>(stage_index)];
   for (const int p : st.parents) {

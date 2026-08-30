@@ -34,6 +34,10 @@ class Simulator {
   // number of idle executors currently available.
   int num_idle() const { return pool_.num_idle(); }
 
+  // max idle executors grantable to a job right now, respecting both the pool
+  // and the job's parallelism headroom. backs the action allocation head.
+  int available_for(int job_index) const;
+
   // jobs currently in the cluster.
   const std::vector<Job>& jobs() const { return jobs_; }
 
