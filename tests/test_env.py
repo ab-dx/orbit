@@ -30,8 +30,7 @@ def test_env_constructs_and_sets_action_space() -> None:
 def test_single_stage_grants_and_accumulates_reward() -> None:
     env, _, _ = _env(_single(8, 4))
     # stage 0, tile index for 4 executors = 3
-    action = 0 * len(ALLOC_TILES) + 3
-    obs, reward, terminated, truncated, info = env.step(action)
+    obs, reward, terminated, truncated, info = env.step((0, 3))
 
     assert terminated is True
     assert truncated is False
@@ -59,7 +58,7 @@ def test_diamond_runs_in_dependency_order() -> None:
     total = 0.0
     terminated = False
     while not terminated:
-        obs, reward, terminated, _trunc, info = env.step(1)  # 2 executors, runnable[0]
+        obs, reward, terminated, _trunc, info = env.step((0, 1))  # 2 executors, runnable[0]
         times.append(info["time"])
         total += reward
 
@@ -78,7 +77,7 @@ def test_two_jobs_share_pool_reward_is_sum_of_jcts() -> None:
     total = 0.0
     terminated = False
     while not terminated:
-        obs, reward, terminated, _trunc, info = env.step(3)
+        obs, reward, terminated, _trunc, info = env.step((0, 3))
         total += reward
 
     # job 0 finishes at t=1 (jct 1), job 1 finishes at t=2 (jct 2)
@@ -92,8 +91,7 @@ def test_allocation_clamped_by_parallelism_headroom() -> None:
     # clamp failed and it used 4, the job would finish twice as fast.
     env, _, _ = _env(_single(8, 2))
     # ask for tile 4 executors (index 3) but the job's headroom is 2
-    action = 0 * len(ALLOC_TILES) + 3
-    obs, reward, terminated, _trunc, info = env.step(action)
+    obs, reward, terminated, _trunc, info = env.step((0, 3))
 
     # 8 tasks at 2 executors, no cap: 4 waves of 2 @ 1.0s each
     assert info["time"] == 4.0
@@ -107,8 +105,7 @@ def test_action_picks_stage_among_runnables() -> None:
     assert info["runnable"] == [(0, 0), (1, 0), (2, 0)]
 
     # stage_idx 2 -> third runnable (job 2); tile index 0 -> 1 executor
-    action = 2 * len(ALLOC_TILES) + 0
-    obs, _reward, _term, _trunc, info = env.step(action)
+    obs, _reward, _term, _trunc, info = env.step((2, 0))
     # granting to job 2 runs its single-task stage to completion; verify the
     # grant was issued and the simulator advanced past it
     assert env._sim.jobs()[2].completed is True
@@ -116,8 +113,8 @@ def test_action_picks_stage_among_runnables() -> None:
 
 def test_exhausted_episode_terminates_once() -> None:
     env, _, _ = _env(_single(2, 2))
-    _, reward, terminated, _, _ = env.step(1)  # 2 executors
+    _, reward, terminated, _, _ = env.step((0, 1))  # 2 executors
     assert terminated is True
     # stepping past the end keeps terminated and returns 0 reward again
-    obs, reward, terminated, _, _ = env.step(0)
+    obs, reward, terminated, _, _ = env.step((0, 0))
     assert terminated is True

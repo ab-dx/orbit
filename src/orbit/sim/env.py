@@ -99,14 +99,11 @@ class OrbitEnv(gym.Env):
         self.action_space = spaces.Discrete(self._n_total_stages * len(ALLOC_TILES))
 
         obs = self._sim.observe()
-        return obs, {
-            "runnable": list(obs.runnable),
-            "terminated": False,
-            "arrived": sum(self._arrived),
-        }
+        info = self._info(obs)
+        return obs, info
 
     def step(
-        self, action: int
+        self, action
     ) -> tuple[core.Observation, float, bool, bool, dict]:
         """apply one scheduling decision, then run to the next decision point."""
         sim = self._sim
@@ -114,28 +111,42 @@ class OrbitEnv(gym.Env):
 
         runnable = list(sim.observe().runnable)
 
-        if runnable:
-            flat = int(action)
-            tile_idx = flat % len(ALLOC_TILES)
-            stage_idx = flat // len(ALLOC_TILES)
-            if stage_idx < len(runnable):
-                job_idx, _stage = runnable[stage_idx]
-                count = min(ALLOC_TILES[tile_idx], sim.available_for(job_idx))
-                if count > 0:
-                    sim.add_executors(job_idx, count)
+        stage_action, alloc_action = action
+
+        if runnable and 0 <= stage_action < len(runnable):
+            job_idx, _stage = runnable[stage_action]
+            tile = (
+                ALLOC_TILES[alloc_action]
+                if 0 <= alloc_action < len(ALLOC_TILES)
+                else 0
+            )
+            count = min(tile, sim.available_for(job_idx))
+            if count > 0:
+                sim.add_executors(job_idx, count)
 
         reward = -self._advance()
 
         obs = sim.observe()
         self._reconcile_arrivals()
         terminated = self._all_done()
-        info = {
-            "runnable": list(obs.runnable),
+        info = self._info(obs, terminated=terminated)
+        return obs, float(reward), terminated, False, info
+
+    def _info(self, obs, terminated: bool = False) -> dict:
+        """build the info dict for the policy from an observation."""
+        sim = self._sim
+        node_of = {(n.job_index, n.stage_index): n.node_id for n in obs.nodes}
+        runnable = list(obs.runnable)
+        return {
+            "runnable": runnable,
+            "runnable_node_ids": [node_of[p] for p in runnable],
+            "available": [
+                sim.available_for(job_idx) for job_idx, _stage in runnable
+            ],
             "terminated": terminated,
             "time": sim.now(),
             "arrived": sum(self._arrived),
         }
-        return obs, float(reward), terminated, False, info
 
     # workload planning
 

@@ -97,7 +97,7 @@ def _run_episode(seed):
     steps = 0
     terminated = False
     while not terminated:
-        obs, reward, terminated, _trunc, info = env.step(1)  # tile -> 2 executors
+        obs, reward, terminated, _trunc, info = env.step((0, 1))  # tile -> 2 executors
         total += reward
         steps += 1
         assert steps < 500
@@ -125,7 +125,7 @@ def test_arrivals_stagger_and_grow_runnable_set() -> None:
     for _ in range(60):
         if terminated:
             break
-        obs, _r, terminated, _trunc, info = env.step(1)
+        obs, _r, terminated, _trunc, info = env.step((0, 1))
         if info["arrived"] not in arrived_seen:
             arrived_seen.append(info["arrived"])
     assert arrived_seen[0] > 0  # the first step advanced to an arrival
