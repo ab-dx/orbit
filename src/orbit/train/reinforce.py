@@ -13,6 +13,7 @@ import torch
 
 from ..agent import Policy, graph_input
 from ..sim import OrbitEnv, WorkloadConfig
+from .curriculum import Curriculum, wcfg_for
 
 
 def rollout(
@@ -109,6 +110,7 @@ class TrainConfig:
     baseline_window: int = 20     # window for the return baseline
     seed: int | None = None
     max_steps: int = 1000
+    curriculum: Curriculum | None = None
 
 
 def train(
@@ -129,10 +131,15 @@ def train(
     window: list[float] = []
 
     for it in range(cfg.iters):
+        it_wcfg = (
+            wcfg_for(cfg.curriculum, it, wcfg)
+            if cfg.curriculum is not None
+            else wcfg
+        )
         traj = rollout(
             policy,
             env,
-            wcfg,
+            it_wcfg,
             seed=None if cfg.seed is None else cfg.seed + it,
             max_steps=cfg.max_steps,
         )

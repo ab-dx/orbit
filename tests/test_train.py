@@ -6,11 +6,13 @@ from orbit import core
 from orbit.agent import Policy
 from orbit.sim import OrbitEnv, WorkloadConfig
 from orbit.train import (
+    Curriculum,
     TrainConfig,
     reinforce_loss,
     returns_to_go,
     rollout,
     train,
+    wcfg_for,
 )
 
 N_FEATURES = 12
@@ -127,3 +129,56 @@ def test_train_uses_prior_episodes_as_baseline() -> None:
     # the first baseline is 0 (no history); later ones reflect prior returns
     assert baselines[0] == 0.0
     assert any(b < 0.0 for b in baselines[1:])
+
+
+def test_wcfg_for_disabled_returns_target() -> None:
+    target = _wcfg(num_jobs=8)
+    out = wcfg_for(Curriculum(enabled=False), 0, target)
+    assert out is target
+    assert out.num_jobs == 8
+
+
+def test_wcfg_for_ramps_job_count() -> None:
+    target = _wcfg(num_jobs=10)
+    cur = Curriculum(start_jobs=2, ramp_iters=4, enabled=True)
+
+    counts = [wcfg_for(cur, it, target).num_jobs for it in range(5)]
+    # start small, grow, then saturate at the target
+    assert counts[0] == 2
+    assert counts[-1] == 10
+    assert counts == sorted(counts)
+
+
+def test_wcfg_for_clamps_on_target() -> None:
+    target = _wcfg(num_jobs=4)
+    cur = Curriculum(start_jobs=2, ramp_iters=1000, enabled=True)
+    # never overshoots the target even with a long ramp
+    for it in range(0, 20, 3):
+        assert wcfg_for(cur, it, target).num_jobs <= target.num_jobs
+
+
+def test_train_with_curriculum_grows_episodes() -> None:
+    env = _env()
+    pol = Policy(in_dim=N_FEATURES, hidden_dim=16)
+    target = _wcfg(num_jobs=6)
+    seen: list[int] = []
+
+    def progress(it, ret, base) -> None:
+        seen.append(it)
+
+    train(
+        pol,
+        env,
+        target,
+        TrainConfig(
+            iters=5,
+            seed=9,
+            max_steps=300,
+            curriculum=Curriculum(start_jobs=2, ramp_iters=4, enabled=True),
+        ),
+        progress=progress,
+    )
+
+    assert len(seen) == 5
+    # the final iteration ramps up to the full target workload
+    assert env._n_jobs == target.num_jobs
