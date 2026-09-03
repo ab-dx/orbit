@@ -13,6 +13,7 @@ import torch
 
 from ..agent import Policy, graph_input
 from ..sim import OrbitEnv, WorkloadConfig
+from .baseline import baseline_rollout
 from .curriculum import Curriculum, wcfg_for
 
 
@@ -85,7 +86,12 @@ def returns_to_go(rewards: torch.Tensor, gamma: float = 1.0) -> torch.Tensor:
     return rets
 
 
-def reinforce_loss(traj: dict, baseline: float = 0.0, gamma: float = 1.0) -> torch.Tensor:
+def reinforce_loss(
+    traj: dict,
+    baseline: float = 0.0,
+    gamma: float = 1.0,
+    reference: torch.Tensor | None = None,
+) -> torch.Tensor:
     """the reinforce objective: log probs weighted by returns minus baseline.
 
     scalar and differentiable; the mean keeps magnitude stable across episodes
@@ -96,7 +102,11 @@ def reinforce_loss(traj: dict, baseline: float = 0.0, gamma: float = 1.0) -> tor
         return torch.tensor(0.0, requires_grad=True)
     # weight each decision by the return at its own step
     rets = returns_to_go(traj["rewards"], gamma=gamma)[traj["decision_ix"]]
-    advantages = rets - baseline
+    if reference is not None:
+        # differential rewards: subtract a same-episode reference return
+        advantages = rets - reference
+    else:
+        advantages = rets - baseline
     return -(advantages * lps).mean()
 
 
@@ -111,6 +121,7 @@ class TrainConfig:
     seed: int | None = None
     max_steps: int = 1000
     curriculum: Curriculum | None = None
+    differential: bool = False   # use a heuristic same-episode baseline
 
 
 def train(
@@ -136,24 +147,35 @@ def train(
             if cfg.curriculum is not None
             else wcfg
         )
+        run_seed = None if cfg.seed is None else cfg.seed + it
         traj = rollout(
             policy,
             env,
             it_wcfg,
-            seed=None if cfg.seed is None else cfg.seed + it,
+            seed=run_seed,
             max_steps=cfg.max_steps,
         )
         iteration_return = traj["total_reward"]
         returns_log.append(iteration_return)
 
-        # baseline from past returns only, so it stays unbiased
-        baseline = sum(window) / len(window) if window else 0.0
+        if cfg.differential:
+            # heuristic baseline over the same episode; subtract its returns
+            ref = baseline_rollout(env, it_wcfg, seed=run_seed, max_steps=cfg.max_steps)
+            ref_rets = returns_to_go(ref["rewards"], gamma=cfg.gamma)
+            reference = ref_rets[traj["decision_ix"]]
+            baseline = 0.0
+        else:
+            # baseline from past returns only, so it stays unbiased
+            baseline = sum(window) / len(window) if window else 0.0
+            reference = None
         window.append(iteration_return)
         if len(window) > cfg.baseline_window:
             window.pop(0)
 
         optimizer.zero_grad()
-        loss = reinforce_loss(traj, baseline=baseline, gamma=cfg.gamma)
+        loss = reinforce_loss(
+            traj, baseline=baseline, gamma=cfg.gamma, reference=reference
+        )
         loss.backward()
         optimizer.step()
 

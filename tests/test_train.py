@@ -8,6 +8,8 @@ from orbit.sim import OrbitEnv, WorkloadConfig
 from orbit.train import (
     Curriculum,
     TrainConfig,
+    baseline_rollout,
+    heuristic_action,
     reinforce_loss,
     returns_to_go,
     rollout,
@@ -182,3 +184,79 @@ def test_train_with_curriculum_grows_episodes() -> None:
     assert len(seen) == 5
     # the final iteration ramps up to the full target workload
     assert env._n_jobs == target.num_jobs
+
+
+def test_heuristic_action_uses_fifo_and_greedy_grant() -> None:
+    info = {"available": [16, 4, 32]}
+    stage, alloc = heuristic_action(info)
+    assert stage == 0
+    # largest tile (32) exceeds available 16, so 16 is chosen
+    assert alloc == 4  # ALLOC_TILES[4] == 16
+    assert 1 << alloc == 16
+
+
+def test_heuristic_action_noop_when_nothing_available() -> None:
+    stage, alloc = heuristic_action({"available": [0, 8]})
+    assert (stage, alloc) == (0, 0)
+
+
+def test_baseline_rollout_is_deterministic() -> None:
+    env = _env()
+    r1 = baseline_rollout(env, _wcfg(), seed=1, max_steps=300)
+    r2 = baseline_rollout(env, _wcfg(), seed=1, max_steps=300)
+    assert r1["rewards"].numel() > 0
+    assert torch.equal(r1["rewards"], r2["rewards"])
+
+
+def test_baseline_rollout_reproduces_policy_trace_length() -> None:
+    env = _env()
+    pol = Policy(in_dim=N_FEATURES, hidden_dim=16)
+    wcfg = _wcfg()
+    traj = rollout(pol, env, wcfg, seed=2, max_steps=300)
+    ref = baseline_rollout(env, wcfg, seed=2, max_steps=300)
+    # same seed and action count means aligned reward traces
+    assert ref["rewards"].numel() == traj["rewards"].numel()
+
+
+def test_differential_loss_is_zero_for_matching_reference() -> None:
+    rewards = torch.tensor([-1.0, -3.0, -2.0])
+    traj = {
+        "log_probs": torch.tensor([-0.5, -0.7]).detach().requires_grad_(True),
+        "decision_ix": torch.tensor([0, 2], dtype=torch.long),
+        "rewards": rewards,
+    }
+    rets = returns_to_go(rewards)
+    reference = rets[traj["decision_ix"]]
+    loss = reinforce_loss(traj, reference=reference)
+    # policy returns equal the reference, so the advantage is zero
+    assert torch.allclose(loss, torch.zeros_like(loss), atol=1e-6)
+
+
+def test_differential_loss_math() -> None:
+    rewards = torch.tensor([-1.0, -3.0])
+    traj = {
+        "log_probs": torch.tensor([-0.5, -0.7]).detach().requires_grad_(True),
+        "decision_ix": torch.tensor([0, 1], dtype=torch.long),
+        "rewards": rewards,
+    }
+    reference = torch.tensor([-2.0, -5.0])
+    rets = returns_to_go(rewards)  # [-4.0, -3.0]
+    expected = -(((rets - reference) * traj["log_probs"]).mean())
+    loss = reinforce_loss(traj, reference=reference)
+    assert torch.allclose(loss, expected)
+
+
+def test_train_with_differential_runs_and_updates() -> None:
+    env = _env()
+    pol = Policy(in_dim=N_FEATURES, hidden_dim=16)
+    before = [p.detach().clone() for p in pol.parameters()]
+    train(
+        pol,
+        env,
+        _wcfg(),
+        TrainConfig(iters=3, seed=5, max_steps=300, differential=True),
+    )
+    changed = any(
+        not torch.equal(a, b) for a, b in zip(before, pol.parameters())
+    )
+    assert changed
