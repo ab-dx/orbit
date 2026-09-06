@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package orbit.serve;
+
+service Scheduler {
+  rpc Decide(DecideRequest) returns (DecideResponse);
+}
+
+// a scheduling observation: the node feature matrix, dag edges, and the
+// runnable stages with their available executors.
+message DecideRequest {
+  repeated float x = 1;           // node features, row major over n_nodes
+  int32 n_features = 2;           // feature columns per node
+  repeated int32 edge_src = 3;    // source node ids of dag edges
+  repeated int32 edge_dst = 4;    // destination node ids of dag edges
+  repeated int32 runnable_node_ids = 5;  // runnable stage node ids
+  repeated int32 available = 6;   // executors available per runnable stage
+}
+
+message DecideResponse {
+  int32 stage_action = 1;         // index into runnable_node_ids
+  int32 alloc_action = 2;         // index into the alloc tiles
+  int32 stage_node_id = 3;        // the chosen runnable node id
+}

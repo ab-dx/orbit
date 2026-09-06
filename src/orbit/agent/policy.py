@@ -92,6 +92,14 @@ class Policy(torch.nn.Module):
         alloc_action = int(alloc_dist.sample().item())
         return Action(stage=stage_action, alloc=alloc_action)
 
+    def act(self, h, runnable_ids: list[int], available: list[int]) -> Action:
+        """the greedy best (stage, alloc) action; for deterministic serving."""
+        stage_dist = self.stage_distribution(h, runnable_ids)
+        stage_action = int(stage_dist.logits.argmax().item())
+        alloc_dist = self.alloc_distribution(h, stage_action, available[stage_action], runnable_ids)
+        alloc_action = int(alloc_dist.logits.argmax().item())
+        return Action(stage=stage_action, alloc=alloc_action)
+
     def log_prob(
         self,
         h,
