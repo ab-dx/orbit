@@ -10,9 +10,10 @@ from orbit.eval import (
     policy_decide,
     run_scheduler,
     summarize,
+    train_and_eval,
 )
 from orbit.sim import ALLOC_TILES, OrbitEnv, WorkloadConfig
-from orbit.train import baseline_rollout
+from orbit.train import TrainConfig, baseline_rollout
 
 N_FEATURES = 12
 
@@ -102,3 +103,20 @@ def test_policy_decide_runs_end_to_end() -> None:
     jct = run_scheduler(decider, env, _wcfg(), seed=3, max_steps=300)
     assert jct > 0.0
     assert torch.isfinite(torch.tensor(jct))
+
+
+def test_train_and_eval_compares_policy_to_heuristics() -> None:
+    env = _env()
+    wcfg = _wcfg()
+    out = train_and_eval(
+        env,
+        wcfg,
+        seeds=[0, 1],
+        train_cfg=TrainConfig(iters=3, seed=4, max_steps=300),
+        max_steps=300,
+    )
+    assert "policy" in out["results"]
+    assert set(out["summary"]) == set(out["results"])
+    for vals in out["results"].values():
+        assert len(vals) == 2
+        assert all(v > 0 for v in vals)

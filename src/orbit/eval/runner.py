@@ -7,7 +7,10 @@ from statistics import mean, stdev
 
 import torch
 
-from ..agent import Policy, graph_input
+from ..agent import Policy, graph_input, save_policy
+from ..sim.observe import FEATURE_COLUMNS
+from ..train import TrainConfig, train
+from .heuristics import HEURISTICS
 
 # a schedulers decision: (stage_action, alloc_action) from the current view.
 Decider = Callable[[object, dict], tuple[int, int]]
@@ -70,4 +73,33 @@ def summarize(results: dict[str, list[float]]) -> dict[str, tuple[float, float]]
     }
 
 
-__all__ = ["Decider", "evaluate", "policy_decide", "run_scheduler", "summarize"]
+def train_and_eval(
+    env,
+    wcfg,
+    seeds: list[int],
+    train_cfg: TrainConfig | None = None,
+    policy: Policy | None = None,
+    save_path: str | None = None,
+    max_steps: int = 1000,
+    hidden_dim: int = 16,
+) -> dict:
+    """train a policy, optionally save it, then compare it to the heuristics."""
+    if policy is None:
+        policy = Policy(in_dim=len(FEATURE_COLUMNS), hidden_dim=hidden_dim)
+    train(policy, env, wcfg, train_cfg or TrainConfig())
+    if save_path is not None:
+        save_policy(policy, save_path)
+    deciders: dict[str, Decider] = {"policy": policy_decide(policy)}
+    deciders.update(HEURISTICS)
+    results = evaluate(deciders, env, wcfg, seeds, max_steps=max_steps)
+    return {"results": results, "summary": summarize(results)}
+
+
+__all__ = [
+    "Decider",
+    "evaluate",
+    "policy_decide",
+    "run_scheduler",
+    "summarize",
+    "train_and_eval",
+]

@@ -50,6 +50,9 @@ class GraphEncoder(nn.Module):
         num_layers: int = 2,
     ) -> None:
         super().__init__()
+        self.in_dim = in_dim
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
         self.embed = nn.Linear(in_dim, hidden_dim)
         self.convs = nn.ModuleList(
             [MeanConv(hidden_dim, hidden_dim) for _ in range(num_layers)]

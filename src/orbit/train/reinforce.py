@@ -162,8 +162,15 @@ def train(
             # heuristic baseline over the same episode; subtract its returns
             ref = baseline_rollout(env, it_wcfg, seed=run_seed, max_steps=cfg.max_steps)
             ref_rets = returns_to_go(ref["rewards"], gamma=cfg.gamma)
-            reference = ref_rets[traj["decision_ix"]]
-            baseline = 0.0
+            # use the differential only when the traces line up in length
+            if traj["decision_ix"].numel() and ref_rets.numel() > int(
+                traj["decision_ix"].max()
+            ):
+                reference = ref_rets[traj["decision_ix"]]
+                baseline = 0.0
+            else:
+                baseline = sum(window) / len(window) if window else 0.0
+                reference = None
         else:
             # baseline from past returns only, so it stays unbiased
             baseline = sum(window) / len(window) if window else 0.0
