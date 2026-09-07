@@ -21,3 +21,6 @@ _skbuild/
 *.so
 *.pyd
 .omo/
+
+# Training artifacts
+policy.pt

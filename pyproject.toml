@@ -25,6 +25,7 @@ serve = [
 dev = [
     "pytest>=7.4",
     "pytest-benchmark>=4.0",
+    "matplotlib>=3.8",
 ]
 
 [project.scripts]

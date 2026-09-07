@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: set up python and venv
+        run: |
+          uv python install 3.12
+          uv venv .venv --python 3.12
+      - name: build and install
+        run: uv pip install -e ".[dev,serve]" --python .venv/bin/python
+      - name: run tests
+        run: .venv/bin/python -m pytest tests/ -o addopts=""
